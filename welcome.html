@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>MSEC Smart Workspace - Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg,#4e4376,#2b5876);
+      color: #fff;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px;
+    }
+
+    header { width: 100%; text-align: center; margin-top: 10px; }
+
+    header img {
+      width: 80px; height: 80px; border-radius: 50%;
+      object-fit: cover; background: #fff; padding: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    h1 { font-size: 1.2rem; margin: 6px 0 2px; }
+    #user-email { font-size: 0.8rem; color: #e6e6e6; margin-bottom: 10px; }
+
+    .top-right {
+      display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    #mqtt-status {
+      padding: 6px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+    }
+    .connected { background: #27ae60; }
+    .disconnected { background: #e74c3c; }
+
+    button {
+      padding: 8px 12px; border-radius: 10px; border: none;
+      background: #fff; color: #4e4376; font-weight: 600;
+      cursor: pointer; transition: 0.2s;
+    }
+    button.secondary { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+    button.small-btn { font-size: 0.75rem; padding: 6px 10px; }
+
+    .devices {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      justify-items: center;
+      margin-top: 15px;
+    }
+
+    .device {
+      background: rgba(255,255,255,0.08);
+      border-radius: 15px;
+      padding: 10px;
+      text-align: center;
+      width: 100%;
+      max-width: 160px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    .device h4 { margin: 4px 0 8px; font-size: 0.95rem; }
+
+    .circle-btn {
+      width: 70px; height: 70px; border-radius: 50%; border: none;
+      font-weight: 700; font-size: 1rem; color: #fff;
+      margin: 10px auto; display: flex; align-items: center; justify-content: center;
+      transition: all 0.3s;
+    }
+    .on { background: #2ecc71; color: #042; }
+    .off { background: #e74c3c; color: #fff; }
+    .unknown { background: #f1c40f; color: #222; }
+
+    #btn-add-device {
+      position: fixed; bottom: 25px; right: 25px;
+      background: #2ecc71; color: #fff;
+      width: 60px; height: 60px; border-radius: 50%;
+      font-size: 1.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .popup {
+      position: fixed; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); visibility: hidden; opacity: 0;
+      transition: opacity .2s; z-index: 50; padding: 10px;
+    }
+    .popup.active { visibility: visible; opacity: 1; }
+
+    .popup-box {
+      background: #fff; color: #111; border-radius: 12px;
+      padding: 16px; width: 100%; max-width: 350px; text-align: left;
+    }
+
+    .popup-box input, .popup-box select {
+      width: 100%; padding: 10px; margin: 6px 0;
+      border-radius: 8px; border: 1px solid #ccc; font-size: 0.9rem;
+    }
+
+    #inline-alert {
+      width: 100%;
+      max-width: 400px;
+      background: rgba(255,255,255,0.1);
+      border-left: 4px solid #f1c40f;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 0.9rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="data:image/png;base64,..." alt="MSEC Logo" />
+    <h1>MSEC Smart Workspace</h1>
+    <div id="user-email">Checking login...</div>
+  </header>
+
+  <div id="inline-alert"></div>
+
+  <div class="top-right">
+    <span style="font-size:0.85rem;">MQTT:</span>
+    <span id="mqtt-status" class="disconnected">Not Connected ❌</span>
+    <button id="open-mqtt" class="secondary small-btn">MQTT</button>
+    <button id="logout" class="small-btn">Logout</button>
+  </div>
+
+  <div id="devices-container" class="devices"></div>
+  <button id="btn-add-device">+</button>
+
+  <!-- Add/Edit Device Popup -->
+  <div id="device-popup" class="popup">
+    <div class="popup-box">
+      <h3>Add Appliance</h3>
+      <input id="appliance-name" placeholder="e.g. Fan" />
+      <select id="relay-select"></select>
+      <input id="device-id" placeholder="Device ID (optional)" />
+      <div style="text-align:right;margin-top:8px;">
+        <button id="save-device">Save</button>
+        <button id="cancel-device" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MQTT Popup -->
+  <div id="mqtt-popup" class="popup">
+    <div class="popup-box">
+      <h3>MQTT Credentials</h3>
+      <p style="font-size:0.9rem;margin:0 0 6px;">
+        Broker: <b>c660cf6c.ala.eu-central-1.emqxsl.com</b>
+      </p>
+      <input id="mqtt-username" placeholder="MQTT Username" />
+      <input id="mqtt-password" type="password" placeholder="MQTT Password" />
+      <div style="text-align:right;margin-top:8px;">
+        <button id="save-mqtt">Save & Connect</button>
+        <button id="cancel-mqtt" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+    import { getDatabase, ref, get, set, push, onValue } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAwQCp2AZ1PcHlpBezqmQOBEOlNShMZwu0",
+      authDomain: "homeautomation-12e24.firebaseapp.com",
+      databaseURL: "https://homeautomation-12e24-default-rtdb.firebaseio.com",
+      projectId: "homeautomation-12e24",
+      storageBucket: "homeautomation-12e24.firebasestorage.app",
+      messagingSenderId: "288993629711",
+      appId: "1:288993629711:web:eeca03d124b88cd575b57a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    const mqttStatusEl = document.getElementById("mqtt-status");
+    const inlineAlert = document.getElementById("inline-alert");
+    const devicesContainer = document.getElementById("devices-container");
+    const btnAdd = document.getElementById("btn-add-device");
+    const devicePopup = document.getElementById("device-popup");
+    const mqttPopup = document.getElementById("mqtt-popup");
+    const mqttUserInput = document.getElementById("mqtt-username");
+    const mqttPassInput = document.getElementById("mqtt-password");
+    const saveMqttBtn = document.getElementById("save-mqtt");
+    const cancelMqttBtn = document.getElementById("cancel-mqtt");
+    const saveDeviceBtn = document.getElementById("save-device");
+    const cancelDeviceBtn = document.getElementById("cancel-device");
+    const applianceNameInput = document.getElementById("appliance-name");
+    const relaySelect = document.getElementById("relay-select");
+    const deviceIdInput = document.getElementById("device-id");
+    const openMqttBtn = document.getElementById("open-mqtt");
+    const logoutBtn = document.getElementById("logout");
+
+    let mqttClient = null, currentUser = null, devicesRef = null, localDevices = {};
+
+    const openPopup = el => el.classList.add('active');
+    const closePopup = el => el.classList.remove('active');
+
+    const showInlineAlert = (msg, color="#f1c40f")=>{
+      inlineAlert.textContent = msg;
+      inlineAlert.style.display = "block";
+      inlineAlert.style.borderLeftColor = color;
+    };
+
+    const setMqttStatus = (ok, txt)=>{
+      mqttStatusEl.className = ok ? 'connected' : 'disconnected';
+      mqttStatusEl.textContent = txt || (ok ? 'Connected ✅' : 'Disconnected ❌');
+    };
+
+    function connectMQTT({ username, password }) {
+      try { if (mqttClient) mqttClient.end(true); } catch (_){}
+
+      const url = 'wss://c660cf6c.ala.eu-central-1.emqxsl.com:8084/mqtt';
+
+      mqttClient = window.mqtt.connect(url, {
+        username,
+        password,
+        reconnectPeriod: 3000,
+        clientId: 'msec_web_' + Math.random().toString(16).substr(2, 8)
+      });
+
+      mqttClient.on('connect', ()=>{
+        console.log('MQTT connected');
+        setMqttStatus(true);
+        showInlineAlert('MQTT Connected','#2ecc71');
+        mqttClient.subscribe('msec/relay/status');
+      });
+
+      mqttClient.on('error', (err)=>{
+        console.error('MQTT error', err);
+        showInlineAlert('MQTT error, see console','#e74c3c');
+      });
+
+      mqttClient.on('close', ()=>{
+        console.log('MQTT disconnected');
+        setMqttStatus(false);
+      });
+
+      mqttClient.on('message', (t, p)=>{
+        const payload = p.toString();
+        console.log('MQTT message received:', t, payload);
+        try {
+          const msg = JSON.parse(payload);
+          Object.keys(msg).forEach((k)=>{
+            const state = msg[k] ? 'ON' : 'OFF';
+            if (localDevices[k]) {
+              localDevices[k].lastState = state;
+              renderDevice(k, localDevices[k]);
+            }
+          });
+        } catch(e) {
+          console.error('Failed to parse MQTT JSON', e);
+        }
+      });
+    }
+
+    function renderDevice(id, d){
+      let el = document.getElementById('dev-' + id);
+      if(!el){
+        el = document.createElement('div');
+        el.className = 'device';
+        el.id = 'dev-' + id;
+        devicesContainer.appendChild(el);
+      }
+      el.innerHTML = `<h4>${d.meta.name}</h4>`;
+      const btn = document.createElement('button');
+      btn.className = 'circle-btn ' + (d.lastState === 'ON' ? 'on' : d.lastState === 'OFF' ? 'off' : 'unknown');
+      btn.textContent = d.lastState || 'Unknown';
+      btn.onclick = ()=>toggleDevice(id, d);
+      el.appendChild(btn);
+    }
+
+    function toggleDevice(id, d){
+      if(!mqttClient || mqttClient.disconnected){
+        showInlineAlert('MQTT not connected','#e74c3c');
+        return;
+      }
+      const newState = d.lastState === 'ON' ? 'OFF' : 'ON';
+      const relayNum = d.meta.relay; // 1..6
+      const payload = JSON.stringify({ relay: relayNum, state: newState });
+      console.log('Publishing control:', payload);
+      mqttClient.publish('msec/relay/control', payload);
+      d.lastState = newState;
+      renderDevice(id, d);
+    }
+
+    onAuthStateChanged(auth, async (u)=>{
+      if(!u){
+        location.href='index.html';
+        return;
+      }
+      currentUser = u;
+      const m = await get(ref(db,`users/${u.uid}/mqtt`));
+      if(m.exists()) connectMQTT(m.val());
+      devicesRef = ref(db,`users/${u.uid}/devices`);
+      onValue(devicesRef, s=>{
+        const val = s.val() || {};
+        devicesContainer.innerHTML = '';
+        localDevices = {};
+        Object.entries(val).forEach(([id, v])=>{
+          const relayId = "relay" + v.meta.relay; // "relay1".."relay6"
+          localDevices[relayId] = { meta: v.meta, lastState: "OFF" };
+          renderDevice(relayId, localDevices[relayId]);
+        });
+      });
+    });
+
+    saveDeviceBtn.onclick = async ()=>{
+      const name = applianceNameInput.value.trim();
+      const relay = relaySelect.value;
+      if(!name || !relay) return showInlineAlert('Enter all fields','#e74c3c');
+      const refNew = push(ref(db,`users/${currentUser.uid}/devices`));
+      await set(refNew, { meta:{ name, relay:Number(relay), createdAt:Date.now() } });
+      closePopup(devicePopup);
+      showInlineAlert('Device added','#2ecc71');
+    };
+
+    cancelDeviceBtn.onclick = ()=>closePopup(devicePopup);
+    btnAdd.onclick = ()=>openPopup(devicePopup);
+
+    saveMqttBtn.onclick = async ()=>{
+      const username = mqttUserInput.value.trim();
+      const password = mqttPassInput.value.trim();
+      await set(ref(db,`users/${currentUser.uid}/mqtt`), { username, password });
+      closePopup(mqttPopup);
+      connectMQTT({ username, password });
+    };
+
+    cancelMqttBtn.onclick = ()=>closePopup(mqttPopup);
+    openMqttBtn.onclick = ()=>openPopup(mqttPopup);
+
+    logoutBtn.onclick = async ()=>{
+      await signOut(auth);
+      if(mqttClient) mqttClient.end(true);
+      location.href='index.html';
+    };
+
+    for(let i=1;i<=6;i++){
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = 'Relay ' + i;
+      relaySelect.appendChild(opt);
+    }
+  </script>
+</body>
+</html>
